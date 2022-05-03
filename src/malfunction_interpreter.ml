@@ -67,26 +67,23 @@ let rec interpret locals env : t -> value = function
           let locals = Ident.Map.add x (interpret locals env e) locals in
           bind locals bindings
        | `Recursive recs :: bindings ->
-          let n = List.length recs in
-          let values = Array.make n None in
-          let locals = List.fold_right
+          let rec newlocals () = 
+            List.fold_right
             (fun (x, e) locals -> Ident.Map.add x e locals)
-            (List.mapi (fun i (x, e) ->
+            (List.map (fun (x, e) ->
               let v = match e with
-                | Mlambda _ -> Func (fun arg ->
-                    match values.(i) with
-                    | Some (Func f) -> f arg
+                | Mlambda _ -> Func (fun arg -> 
+                    match interpret (newlocals ()) env e with
+                    | Func f -> f arg
                     | _ -> fail "bad recursive function binding")
                 | Mlazy _ -> Thunk (lazy (
-                    match values.(i) with
-                    | Some (Thunk t) -> Lazy.force t
+                    match interpret (newlocals ()) env e with
+                    | Thunk t -> Lazy.force t
                     | _ -> fail "bad recursive lazy binding"))
                 | _ -> fail "recursive values must be functions or lazy" in
               (x, v)) recs)
             locals in
-          recs |> List.iteri (fun i (_, e) ->
-            values.(i) <- Some (interpret locals env e));
-          bind locals bindings in
+          bind (newlocals ()) bindings in
      bind locals bindings
   | Mnum (`Int n) -> Int (`Int, Z.of_int n)
   | Mnum (`Int32 n) -> Int (`Int32, Z.of_int32 n)
